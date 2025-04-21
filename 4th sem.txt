@@ -1,0 +1,107 @@
+4th sem 
+------ LOGIN PAGE (functionalities which can be added later)
+
+
+
+  1. Password Strength Indicator
+Add a password strength checker to ensure users set strong passwords.
+
+Use client-side JavaScript or a library like zxcvbn to provide feedback on password strength during the sign-up process.
+
+Example: Weak, Moderate, Strong passwords.
+
+2. Email Confirmation (Two-Step Verification)
+Send a confirmation email to users after they sign up to verify their email address.
+
+Add a route where users can confirm their email address by clicking a link in the email.
+
+This can be done by integrating an email sending service like SendGrid or SMTP.
+
+3. Forgot Password / Reset Password
+Allow users to reset their passwords if they forget them.
+
+Users can enter their email address, and a reset password link can be sent via email to reset their password.
+
+Implement token-based password reset (JWT or UUID) with expiration.
+
+4. Captcha Integration
+Protect your forms from bots by integrating CAPTCHA or reCAPTCHA to your sign-up and login pages.
+
+5. Login Attempts Limiting
+Implement rate-limiting to prevent brute-force login attacks.
+
+After a certain number of failed login attempts, temporarily lock the account or enforce a CAPTCHA.
+
+6. Two-Factor Authentication (2FA)
+Add an extra layer of security by implementing two-factor authentication.
+
+Use Google Authenticator or any other OTP-based system for users to authenticate with a one-time code sent via email or SMS.
+
+7. Profile Page
+After login, allow users to access a personal profile page where they can update their personal details, email, password, etc.
+
+Users can upload a profile picture or change their preferences.
+
+8. Session Timeout / Auto Logout
+Implement session timeouts to log users out after a period of inactivity for added security.
+
+You can use Flask-Login for managing user sessions and tracking login times.
+
+9. Login History
+Keep a record of previous successful logins, IP addresses, and devices used for accessing the account.
+
+Display this data in the user’s profile to help detect suspicious activity.
+
+10. User Roles / Permissions
+Implement role-based access control (RBAC) to assign different user roles (Admin, User, Moderator) and permissions.
+
+Only allow certain users (e.g., Admins) to access specific routes, like admin dashboards.
+
+11. User Activity Logs
+Track important user actions such as sign-ins, password changes, failed logins, and profile updates.
+
+Record the time, IP address, and device information for auditing purposes.
+
+12. Profile Picture Upload
+Allow users to upload a profile picture during sign-up or in the user profile page.
+
+13. Email and Password Validation on the Server-Side
+Validate the email address format on the server side (Regex).
+
+Validate that passwords meet a set of security standards (e.g., minimum length, inclusion of numbers, and special characters).
+
+14. Terms and Privacy Policy Acceptance
+Ensure users read and accept your Terms of Service and Privacy Policy before signing up.
+
+Add a checkbox to the signup form that requires the user to agree to these documents before proceeding.
+
+15. API Integration for User Management (Optional)
+If you plan to have mobile apps or external systems interact with your app, create APIs for user registration, login, and profile management.
+
+Use JWT (JSON Web Tokens) for secure token-based authentication.
+
+16. Progress Bar for Sign-Up Form (UX Improvement)
+Show a progress bar during the sign-up process to guide users, especially if you have multiple steps.
+
+Example: Step 1 (Personal Details) → Step 2 (Security) → Step 3 (Confirm Details).
+
+17. Social Media Login Integration
+Allow users to sign up or log in using third-party authentication providers like Google, Facebook, or GitHub.
+
+This can be done using OAuth2.
+
+18. Account Lock/Unlock on Suspicious Activity
+Lock accounts after several failed login attempts and ask for email verification or a security question to unlock it.
+
+You can also implement an email alert or notification for the user to notify them of suspicious login attempts.
+
+19. Dark/Light Mode Toggle
+Add a toggle to switch between dark and light modes for the user interface.
+
+20. Remember Me Option (Persistent Login)
+Use cookies or tokens to remember users between sessions, so they don't have to log in every time they visit the site.
+
+
+
+
+

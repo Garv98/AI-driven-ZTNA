@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container col-xl-10 col-xxl-8 px-4 py-5">
+    <div class="row align-items-center g-lg-5 py-5">
+        <div class="col-lg-7 text-center text-lg-start">
+            <h1 class="display-4 fw-bold lh-1 mb-3">ZTNA Login</h1>
+            <p class="col-lg-10 fs-4">Login securely to access your dashboard.</p>
+        </div>
+        <div class="col-md-10 mx-auto col-lg-5">
+            <form method="POST" action="/" class="p-4 p-md-5 border rounded-3 bg-light" onsubmit="return fillLocation()">
+                <div class="form-floating mb-3">
+                    <input type="text" name="username" class="form-control" id="floatingInput" placeholder="name" required>
+                    <label for="floatingInput">User Name</label>
+                </div>
+                <div class="form-floating mb-3">
+                    <input type="password" name="password" class="form-control" id="floatingPassword" placeholder="Password" required>
+                    <label for="floatingPassword">Password</label>
+                </div>
+                <input type="hidden" name="latitude" id="latitude">
+                <input type="hidden" name="longitude" id="longitude">
+                <div class="checkbox mb-3">
+                    <label><input type="checkbox" value="remember-me"> Remember me</label>
+                </div>
+                <button class="w-100 btn btn-lg btn-primary" type="submit">Login</button>
+                <hr class="my-4">
+                <div class="text-center">
+                    <small class="text-muted">Don't have an account? <a href="{{ url_for('signup') }}">Sign up</a></small>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function fillLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                document.getElementById('latitude').value = position.coords.latitude;
+                document.getElementById('longitude').value = position.coords.longitude;
+                document.forms[0].submit();
+            }, function () {
+                console.warn("Geolocation permission denied or unavailable.");
+                document.forms[0].submit();
+            });
+            return false;
+        } else {
+            return true;
+        }
+    }
+</script>
+</body>
+</html>
