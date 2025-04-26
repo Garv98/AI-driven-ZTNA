@@ -1,4 +1,7 @@
 from flask import Flask, request, render_template, redirect, url_for
+import smtplib
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
 import csv
 from datetime import datetime
 import requests
@@ -11,10 +14,43 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 
+load_dotenv()
 app = Flask(__name__)
+
+EMAIL_SENDER = os.getenv('EMAIL_SENDER')       #Your_gmail_address
+EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')   #App_password in gmail
+SMTP_SERVER = os.getenv('SMTP_SERVER')         # smtp.gmail.com
+SMTP_PORT = int(os.getenv('SMTP_PORT'))        # port 587
+
+def send_email(recipient, subject, body, html_body=None):
+    try:
+        msg = MIMEText(html_body if html_body else body, 'html' if html_body else 'plain')
+        msg['Subject'] = subject
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = recipient
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
 LOG_FILE = 'login_data.csv'
 FAILED_FILE = 'failed_logins.csv'
 USERS_FILE = 'users.json'
+SIGNUP_FILE = 'signup_data.csv'
+SUCCESSFUL_LOGINS_FILE = 'successful_logins.csv'
+
+if not os.path.exists(SUCCESSFUL_LOGINS_FILE):
+    with open(SUCCESSFUL_LOGINS_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Username", "IP Address", "Last Successful Login"])
+
+if not os.path.exists(SIGNUP_FILE):
+    with open(SIGNUP_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Username", "Email", "Phone", "Hashed Password"])
 
 failed_login_tracker = {}
 
@@ -25,7 +61,7 @@ if not os.path.exists(LOG_FILE):
             "User Name", "Source IP", "Destination IP", "Timestamp",
             "OS Name", "Browser Info", "Login Status",
             "City", "State", "Country", "Latitude", "Longitude",
-            "Failed Login Count", "Capture File"
+            "Failed Login Count", "Previous Successful Login", "Network Latency (ms)", "Capture File"
         ])
         
 def load_failed_logins(): 
@@ -65,6 +101,25 @@ def get_client_ip(req):
     else: 
         ip = req.remote_addr 
     return ip
+
+def load_successful_logins():
+    successful = {}
+    if os.path.exists(SUCCESSFUL_LOGINS_FILE):
+        with open(SUCCESSFUL_LOGINS_FILE, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                successful[(row['Username'], row['IP Address'])] = row['Last Successful Login']
+    return successful
+
+def save_successful_logins(successful_logins):
+    with open(SUCCESSFUL_LOGINS_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Username", "IP Address", "Last Successful Login"])
+        for (username, ip), timestamp in successful_logins.items():
+            writer.writerow([username, ip, timestamp])
+
+successful_login_tracker = load_successful_logins()
+
 
 def reverse_geocode(lat, lon):
     try:
@@ -150,23 +205,39 @@ def extract_ips_from_pcap(pcap_file):
         src_counter = Counter(source_ips)
         dst_counter = Counter(dest_ips)
 
-        print("\n[+] Source IPs seen in capture:")
-        for ip, count in src_counter.items():
-            print(f"    {ip}: {count} times")
+        print("\n[+] Source IPs Count:", src_counter)
+        print("\n[+] Destination IPs Count:", dst_counter)
 
-        print("\n[+] Destination IPs seen in capture:")
-        for ip, count in dst_counter.items():
-            print(f"    {ip}: {count} times")
-
-        # Pick most common or fallback
-        most_common_src = src_counter.most_common(1)[0][0] if src_counter else "127.0.0.1"
-        most_common_dst = dst_counter.most_common(1)[0][0] if dst_counter else "127.0.0.1"
+        # Get most common IPs
+        most_common_src = src_counter.most_common(1)[0][0] if src_counter else "N/A"
+        most_common_dst = dst_counter.most_common(1)[0][0] if dst_counter else "N/A"
 
         return most_common_src, most_common_dst
-  
-    except Exception as e:  
-        print(f"[!] Error extracting IPs from pcap: {e}")  
-        return "127.0.0.1", "127.0.0.1"
+
+    except subprocess.CalledProcessError as e:
+        print(f"[!] Error reading pcap file: {e}")
+        return "N/A", "N/A"
+    except Exception as e:
+        print(f"[!] Unexpected error while extracting IPs: {e}")
+        return "N/A", "N/A"
+
+def estimate_network_latency(pcap_file):
+    try:
+        result = subprocess.run([
+            r"C:\Program Files\Wireshark\tshark.exe",
+            "-r", pcap_file,
+            "-T", "fields",
+            "-e", "frame.time_relative",
+            "-Y", "tcp"
+        ], capture_output=True, text=True, check=True)
+
+        timestamps = [float(line.strip()) for line in result.stdout.strip().split('\n') if line.strip()]
+        if len(timestamps) >= 2:
+            latency_ms = (timestamps[1] - timestamps[0]) * 1000  # milliseconds
+            return round(latency_ms, 2)
+    except Exception as e:
+        print(f"[!] Error estimating network latency: {e}")
+    return "N/A"
 
 
 def get_ips_from_request_or_pcap(request, capture_file):
@@ -181,74 +252,106 @@ def get_ips_from_request_or_pcap(request, capture_file):
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    global failed_login_tracker
     if request.method == 'POST':
-        email = request.form.get('username')
-        password = request.form.get('password')
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        latitude = request.form.get('latitude', 'N/A').strip()
+        longitude = request.form.get('longitude', 'N/A').strip()
 
-        ip = get_client_ip(request) 
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        os_name, browser = get_device_info(request.headers.get('User-Agent'))
-        
-        latitude = request.form.get('latitude', 'N/A')
-        longitude = request.form.get('longitude', 'N/A')
-        
-        if latitude != 'N/A' and longitude != 'N/A':
-            city, state, country = reverse_geocode(latitude, longitude)
-        else:
-            city, state, country = 'N/A', 'N/A', 'N/A'
+        user = user_db.get(username)
+        current_failed_attempts = failed_login_tracker.get(f"session_{username}", 0)
 
-        capture_file = capture_network_traffic(email)
-
-        # Get both source and destination IPs
-        src_ip, dst_ip = get_ips_from_request_or_pcap(request, capture_file)
-
-        if email in user_db:
-            stored_hash = user_db[email].encode('utf-8')
-            if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
-                login_status = 'Success'
-            else:
-                login_status = 'Failure'
+        if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+            login_status = 'Success'
+            current_failed_attempts = 0
+            failed_login_tracker.pop(f"session_{username}", None)
+            send_email(
+                user['email'],
+                'ZTNA Login Notification',
+                f"Hello {username},\n\nYou have successfully logged in at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.",
+                html_body=f"""
+                <html><body>
+                <h2>Hello {username},</h2>
+                <p>You have successfully <b>logged in</b> at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.</p>
+                <p>Thank you!</p>
+                </body></html>
+                """
+            )
         else:
             login_status = 'Failure'
+            current_failed_attempts += 1
+            failed_login_tracker[f"session_{username}"] = current_failed_attempts
+            failed_login_tracker[username] = failed_login_tracker.get(username, 0) + 1
 
-        if login_status == 'Failure':
-            failed_login_tracker[email] = failed_login_tracker.get(email, 0) + 1
-        else:
-            failed_login_tracker.setdefault(email, 0)
+        save_failed_logins({k: v for k, v in failed_login_tracker.items() if not k.startswith('session_')})
 
-        save_failed_logins(failed_login_tracker)
+        capture_file = capture_network_traffic(username)
+        source_ip, dest_ip = extract_ips_from_pcap(capture_file)
 
-        failed_count = failed_login_tracker[email]
+        user_agent = request.headers.get('User-Agent', '')
+        os_name, browser_info = get_device_info(user_agent)
+
+        city, state, country = reverse_geocode(latitude, longitude)
+        network_latency_ms = estimate_network_latency(capture_file)
+
+        previous_successful_login = successful_login_tracker.get((username, source_ip), "First Login")
+
+        if login_status == 'Success':
+            successful_login_tracker[(username, source_ip)] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            save_successful_logins(successful_login_tracker)
 
         with open(LOG_FILE, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
-                email, src_ip, dst_ip, timestamp,
-                os_name, browser, login_status,
-                city, state, country, latitude, longitude, failed_count, capture_file
+                username, source_ip, dest_ip, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                os_name, browser_info, login_status,
+                city, state, country, latitude, longitude,
+                current_failed_attempts, previous_successful_login, network_latency_ms, capture_file
             ])
 
-        return redirect(url_for('login'))
+        return "Login Successful" if login_status == 'Success' else "Login Failed. Please try again."
 
     return render_template('login.html')
+
+
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        email = request.form.get('username')
-        password = request.form.get('password')
+        username = request.form['username']
+        email = request.form['email']
+        phone = request.form['phone']
+        password = request.form['password']
 
-        if email in user_db:
-            return "User already exists. Try logging in."
+        # Hash the password
+        hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        user_db[email] = hashed.decode('utf-8')
+        # Save ONLY email and hashed password into users.json
+        user_db[username] = {'email': email, 'password': hashed_pw}
         save_users(user_db)
 
-        return "Signup successful! You can now login."
+        # Save full signup details into signup_data.csv
+        with open(SIGNUP_FILE, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([username, email, phone, hashed_pw])
+        
+        send_email(
+            email,
+            'Signup Confirmation',
+            f"Hello {username},\n\nYou have successfully signed up on our platform.",
+            html_body=f"""
+            <html><body>
+            <h2>Welcome {username}!</h2>
+            <p>You have successfully <b>signed up</b> on our ZTNA platform.</p>
+            <p>Thank you for joining us!</p>
+            </body></html>
+            """
+        )
 
+        return redirect(url_for('login'))
+    
     return render_template('signup.html')
+
 
 
 if __name__ == '__main__':

@@ -7,6 +7,7 @@ import os
 import bcrypt
 import json
 import subprocess
+from collections import Counter
 from datetime import datetime, timedelta
 
 
@@ -21,7 +22,7 @@ if not os.path.exists(LOG_FILE):
     with open(LOG_FILE, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
-            "Email Address", "Source IP", "Destination IP", "Timestamp",
+            "User Name", "Source IP", "Destination IP", "Timestamp",
             "OS Name", "Browser Info", "Login Status",
             "City", "State", "Country", "Latitude", "Longitude",
             "Failed Login Count", "Capture File"
@@ -89,7 +90,21 @@ def get_device_info(user_agent_string):
     browser_info = f"{ua.browser.family} {ua.browser.version_string}"
     return os_name, browser_info
 
-def capture_network_traffic(email, duration=5, interface=4):
+def get_valid_tshark_interface():
+    import subprocess
+
+    try:
+        result = subprocess.run(['tshark', '-D'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in result.stdout.splitlines():
+            # Adjust as needed: look for Wi-Fi, Ethernet, LAN, Wireless
+            if any(keyword in line.lower() for keyword in ['wi-fi', 'wifi', 'ethernet', 'lan', 'wireless']):
+                return line.split('.')[0].strip()  # Return the interface index as string
+    except Exception as e:
+        print(f"[!] Error detecting tshark interface: {e}")
+    return None
+
+
+def capture_network_traffic(email, duration=5, interface= get_valid_tshark_interface()):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     os.makedirs('captures', exist_ok=True)
     filename = f"captures/{email}_{timestamp}.pcapng"
@@ -111,14 +126,13 @@ def capture_network_traffic(email, duration=5, interface=4):
 
 def extract_ips_from_pcap(pcap_file):  
     try:  
-        # Extract both source and destination IPs
         result = subprocess.run([  
             r"C:\Program Files\Wireshark\tshark.exe",  
             "-r", pcap_file,  
             "-T", "fields",  
             "-e", "ip.src",  
             "-e", "ip.dst",  
-            "-Y", "ip"  # Filters only IP packets  
+            "-Y", "ip"  
         ], capture_output=True, text=True, check=True)  
   
         ip_lines = result.stdout.strip().split("\n")  
@@ -126,17 +140,27 @@ def extract_ips_from_pcap(pcap_file):
         dest_ips = []
 
         for line in ip_lines:
-            src, dst = line.split("\t")
-            source_ips.append(src)
-            dest_ips.append(dst)
+            parts = line.split("\t")
+            if len(parts) == 2:
+                src, dst = parts
+                if src not in ("127.0.0.1", "0.0.0.0"): source_ips.append(src)
+                if dst not in ("127.0.0.1", "0.0.0.0"): dest_ips.append(dst)
 
-        # Remove duplicates and invalid IPs
-        source_ips = list(set([ip for ip in source_ips if ip not in ("127.0.0.1", "0.0.0.0")]))
-        dest_ips = list(set([ip for ip in dest_ips if ip not in ("127.0.0.1", "0.0.0.0")]))
+        # Count occurrences
+        src_counter = Counter(source_ips)
+        dst_counter = Counter(dest_ips)
 
-        # Return most frequent source and destination IPs
-        most_common_src = max(source_ips, key=source_ips.count) if source_ips else "127.0.0.1"
-        most_common_dst = max(dest_ips, key=dest_ips.count) if dest_ips else "127.0.0.1"
+        print("\n[+] Source IPs seen in capture:")
+        for ip, count in src_counter.items():
+            print(f"    {ip}: {count} times")
+
+        print("\n[+] Destination IPs seen in capture:")
+        for ip, count in dst_counter.items():
+            print(f"    {ip}: {count} times")
+
+        # Pick most common or fallback
+        most_common_src = src_counter.most_common(1)[0][0] if src_counter else "127.0.0.1"
+        most_common_dst = dst_counter.most_common(1)[0][0] if dst_counter else "127.0.0.1"
 
         return most_common_src, most_common_dst
   
@@ -159,7 +183,7 @@ def get_ips_from_request_or_pcap(request, capture_file):
 def login():
     global failed_login_tracker
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = request.form.get('username')
         password = request.form.get('password')
 
         ip = get_client_ip(request) 
@@ -212,7 +236,7 @@ def login():
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = request.form.get('username')
         password = request.form.get('password')
 
         if email in user_db:

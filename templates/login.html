@@ -47,7 +47,11 @@
             }, function () {
                 console.warn("Geolocation permission denied or unavailable.");
                 document.forms[0].submit();
-            });
+            }, {
+                enableHighAccuracy: true,
+                timeout: 10000,   // 10 seconds
+                maximumAge: 0     // Don't use cached position
+              });
             return false;
         } else {
             return true;
