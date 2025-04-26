@@ -151,9 +151,8 @@ def get_valid_tshark_interface():
     try:
         result = subprocess.run(['tshark', '-D'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         for line in result.stdout.splitlines():
-            # Adjust as needed: look for Wi-Fi, Ethernet, LAN, Wireless
             if any(keyword in line.lower() for keyword in ['wi-fi', 'wifi', 'ethernet', 'lan', 'wireless']):
-                return line.split('.')[0].strip()  # Return the interface index as string
+                return line.split('.')[0].strip()
     except Exception as e:
         print(f"[!] Error detecting tshark interface: {e}")
     return None
@@ -201,14 +200,12 @@ def extract_ips_from_pcap(pcap_file):
                 if src not in ("127.0.0.1", "0.0.0.0"): source_ips.append(src)
                 if dst not in ("127.0.0.1", "0.0.0.0"): dest_ips.append(dst)
 
-        # Count occurrences
         src_counter = Counter(source_ips)
         dst_counter = Counter(dest_ips)
 
         print("\n[+] Source IPs Count:", src_counter)
         print("\n[+] Destination IPs Count:", dst_counter)
 
-        # Get most common IPs
         most_common_src = src_counter.most_common(1)[0][0] if src_counter else "N/A"
         most_common_dst = dst_counter.most_common(1)[0][0] if dst_counter else "N/A"
 
@@ -242,7 +239,7 @@ def estimate_network_latency(pcap_file):
 
 def get_ips_from_request_or_pcap(request, capture_file):
     src_ip = get_client_ip(request)
-    dst_ip = "127.0.0.1"  # Default destination IP (can be updated based on capture)
+    dst_ip = "127.0.0.1" 
 
     if capture_file and "Capture" not in capture_file:
         src_ip, dst_ip = extract_ips_from_pcap(capture_file)
@@ -323,14 +320,11 @@ def signup():
         phone = request.form['phone']
         password = request.form['password']
 
-        # Hash the password
         hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-        # Save ONLY email and hashed password into users.json
         user_db[username] = {'email': email, 'password': hashed_pw}
         save_users(user_db)
 
-        # Save full signup details into signup_data.csv
         with open(SIGNUP_FILE, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([username, email, phone, hashed_pw])
@@ -351,7 +345,6 @@ def signup():
         return redirect(url_for('login'))
     
     return render_template('signup.html')
-
 
 
 if __name__ == '__main__':
