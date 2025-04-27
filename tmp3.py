@@ -252,56 +252,16 @@ def get_ips_from_request_or_pcap(request, capture_file):
     
     return src_ip, dst_ip
 
-def estimate_network_latency(pcap_file):
-    """Estimate network latency using SYN and SYN-ACK timestamps."""
-    try:
-        result = subprocess.run([
-            r"C:\Program Files\Wireshark\tshark.exe",
-            "-r", pcap_file,
-            "-Y", "tcp.flags.syn == 1 && tcp.flags.ack == 0 || tcp.flags.syn == 1 && tcp.flags.ack == 1",
-            "-T", "fields",
-            "-e", "frame.time_relative",
-            "-e", "tcp.flags.syn",
-            "-e", "tcp.flags.ack"
-        ], capture_output=True, text=True, check=True)
-
-        lines = result.stdout.strip().split('\n')
-        syn_time = None
-        synack_time = None
-
-        for line in lines:
-            parts = line.split('\t')
-            if len(parts) == 3:
-                time_rel, syn_flag, ack_flag = parts
-                if syn_flag == '1' and ack_flag == '0' and syn_time is None:
-                    syn_time = float(time_rel)
-                elif syn_flag == '1' and ack_flag == '1' and synack_time is None:
-                    synack_time = float(time_rel)
-
-                if syn_time is not None and synack_time is not None:
-                    break
-
-        if syn_time is not None and synack_time is not None:
-            latency_ms = (synack_time - syn_time) * 1000
-            return round(latency_ms, 2)
-
-    except Exception as e:
-        print(f"[!] Error estimating network latency: {e}")
-
-    return "N/A"
-
-
 def extract_flow_features_with_directions(pcap_file):
-    """Extract detailed flow features with accurate packet direction and protocol detection."""
     try:
         result = subprocess.run([
             r"C:\Program Files\Wireshark\tshark.exe",
             "-r", pcap_file,
             "-T", "fields",
             "-e", "ip.src",
-            "-e", "ip.dst",
             "-e", "tcp.srcport",
             "-e", "udp.srcport",
+            "-e", "ip.dst",
             "-e", "tcp.dstport",
             "-e", "udp.dstport",
             "-e", "_ws.col.Protocol",
@@ -310,10 +270,11 @@ def extract_flow_features_with_directions(pcap_file):
         ], capture_output=True, text=True, check=True)
 
         lines = result.stdout.strip().split('\n')
+        
         if not lines:
             return {}
 
-        total_packets = 0
+        total_packets = len(lines)
         total_bytes = 0
         timestamps = []
         forward_timestamps = []
@@ -322,83 +283,91 @@ def extract_flow_features_with_directions(pcap_file):
         dst_ports = []
         protocols = []
 
-        src_ips = []
-        dst_ips = []
+        first_line = lines[0].split('\t')
+        initiator_ip = first_line[0] if first_line else None  # Assume first packet sender is "initiator"
 
         for line in lines:
             fields = line.split('\t')
             if len(fields) >= 9:
-                src_ip, dst_ip, tcp_src, udp_src, tcp_dst, udp_dst, proto, pkt_len, time_rel = fields
-                src_ports.append(tcp_src or udp_src)
-                dst_ports.append(tcp_dst or udp_dst)
-                protocols.append(proto)
+                src_ip = fields[0]
+                src_port_tcp = fields[1]
+                src_port_udp = fields[2]
+                dst_ip = fields[3]
+                dst_port_tcp = fields[4]
+                dst_port_udp = fields[5]
+                protocol = fields[6]
+                packet_size = fields[7]
+                timestamp = fields[8]
 
-                pkt_size = int(pkt_len) if pkt_len else 0
-                timestamp = float(time_rel) if time_rel else 0
+                # Prefer TCP or UDP ports
+                src_port = src_port_tcp if src_port_tcp else src_port_udp
+                dst_port = dst_port_tcp if dst_port_tcp else dst_port_udp
 
-                total_bytes += pkt_size
-                timestamps.append(timestamp)
-                src_ips.append(src_ip)
-                dst_ips.append(dst_ip)
+                if packet_size:
+                    total_bytes += int(packet_size)
+                if timestamp:
+                    timestamps.append(float(timestamp))
 
-                total_packets += 1
+                    # Determine if Forward or Backward
+                    if src_ip == initiator_ip:
+                        forward_timestamps.append(float(timestamp))
+                    else:
+                        backward_timestamps.append(float(timestamp))
 
-        if not src_ips:
-            return {}
+                if src_port:
+                    src_ports.append(src_port)
+                if dst_port:
+                    dst_ports.append(dst_port)
+                if protocol:
+                    protocols.append(protocol)
 
-        initiator_ip = src_ips[0]
-
-        for i, src_ip in enumerate(src_ips):
-            if src_ip == initiator_ip:
-                forward_timestamps.append(timestamps[i])
-            else:
-                backward_timestamps.append(timestamps[i])
-
-        flow_duration = max(timestamps) - min(timestamps) if timestamps else 0
+        flow_duration = (max(timestamps) - min(timestamps)) if timestamps else 0
         flow_bytes_per_s = total_bytes / flow_duration if flow_duration else 0
         flow_packets_per_s = total_packets / flow_duration if flow_duration else 0
 
-        avg_iat_forward = 0
+        most_common_protocol = Counter(protocols).most_common(1)[0][0] if protocols else "N/A"
+        most_common_src_port = Counter(src_ports).most_common(1)[0][0] if src_ports else "N/A"
+        most_common_dst_port = Counter(dst_ports).most_common(1)[0][0] if dst_ports else "N/A"
+
+        # Calculate IAT Forward
+        iat_forward = []
         if len(forward_timestamps) >= 2:
             forward_timestamps.sort()
-            iat_fwd = [forward_timestamps[i+1] - forward_timestamps[i] for i in range(len(forward_timestamps)-1)]
-            avg_iat_forward = sum(iat_fwd)/len(iat_fwd)
+            iat_forward = [forward_timestamps[i+1] - forward_timestamps[i] for i in range(len(forward_timestamps)-1)]
 
-        avg_iat_backward = 0
+        # Calculate IAT Backward
+        iat_backward = []
         if len(backward_timestamps) >= 2:
             backward_timestamps.sort()
-            iat_bwd = [backward_timestamps[i+1] - backward_timestamps[i] for i in range(len(backward_timestamps)-1)]
-            avg_iat_backward = sum(iat_bwd)/len(iat_bwd)
+            iat_backward = [backward_timestamps[i+1] - backward_timestamps[i] for i in range(len(backward_timestamps)-1)]
 
-        idle_duration = 0
-        if len(timestamps) >= 2:
-            timestamps.sort()
-            idle_gaps = [timestamps[i+1] - timestamps[i] for i in range(len(timestamps)-1)]
-            idle_duration = max(idle_gaps)
+        avg_iat_forward = sum(iat_forward)/len(iat_forward) if iat_forward else 0
+        avg_iat_backward = sum(iat_backward)/len(iat_backward) if iat_backward else 0
 
-        # DETECT PROTOCOL
-        proto_set = set([p.lower() for p in protocols if p])
-        protocol_type = "TLSv1.2" if any("tls" in p for p in proto_set) else ("TCP" if "tcp" in proto_set else "UDP" if "udp" in proto_set else "N/A")
+        # Idle Duration (largest gap overall)
+        all_timestamps = sorted(timestamps)
+        idle_durations = [all_timestamps[i+1] - all_timestamps[i] for i in range(len(all_timestamps)-1)]
+        max_idle_duration = max(idle_durations) if idle_durations else 0
 
         return {
-            "Source Port": Counter(src_ports).most_common(1)[0][0] if src_ports else "N/A",
-            "Destination Port": Counter(dst_ports).most_common(1)[0][0] if dst_ports else "N/A",
-            "Protocol Type": protocol_type,
+            "Source Port": most_common_src_port,
+            "Destination Port": most_common_dst_port,
+            "Protocol Type": most_common_protocol,
             "Flow Duration": round(flow_duration, 3),
-            "Packet Size": round(total_bytes/total_packets, 2) if total_packets else 0,
+            "Packet Size": round(total_bytes / total_packets, 2) if total_packets else 0,
             "Flow Bytes per Second": round(flow_bytes_per_s, 2),
             "Flow Packets per Second": round(flow_packets_per_s, 2),
             "Total Forward Packets": len(forward_timestamps),
             "Total Backward Packets": len(backward_timestamps),
             "IAT Forward": round(avg_iat_forward, 6),
             "IAT Backward": round(avg_iat_backward, 6),
-            "Idle Duration": round(idle_duration, 6),
+            "Idle Duration": round(max_idle_duration, 6),
             "Total Packets": total_packets,
             "Total Bytes": total_bytes
         }
-
+        
     except Exception as e:
-        print(f"[!] Error extracting flow features: {e}")
+        print(f"Error extracting flow features with directions: {e}")
         return {}
 
 

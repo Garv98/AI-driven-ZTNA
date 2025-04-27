@@ -61,13 +61,7 @@ if not os.path.exists(LOG_FILE):
             "User Name", "Source IP", "Destination IP", "Timestamp",
             "OS Name", "Browser Info", "Login Status",
             "City", "State", "Country", "Latitude", "Longitude",
-            "Failed Login Count", "Previous Successful Login", "Network Latency (ms)", "Capture File",
-            "Source Port", "Destination Port", "Protocol Type",
-            "Flow Duration", "Packet Size",
-            "Flow Bytes per Second", "Flow Packets per Second",
-            "Total Forward Packets", "Total Backward Packets",
-            "IAT Forward", "IAT Backward",
-            "Idle Duration", "Total Packets", "Total Bytes"
+            "Failed Login Count", "Previous Successful Login", "Network Latency (ms)", "Capture File"
         ])
         
 def load_failed_logins(): 
@@ -252,155 +246,6 @@ def get_ips_from_request_or_pcap(request, capture_file):
     
     return src_ip, dst_ip
 
-def estimate_network_latency(pcap_file):
-    """Estimate network latency using SYN and SYN-ACK timestamps."""
-    try:
-        result = subprocess.run([
-            r"C:\Program Files\Wireshark\tshark.exe",
-            "-r", pcap_file,
-            "-Y", "tcp.flags.syn == 1 && tcp.flags.ack == 0 || tcp.flags.syn == 1 && tcp.flags.ack == 1",
-            "-T", "fields",
-            "-e", "frame.time_relative",
-            "-e", "tcp.flags.syn",
-            "-e", "tcp.flags.ack"
-        ], capture_output=True, text=True, check=True)
-
-        lines = result.stdout.strip().split('\n')
-        syn_time = None
-        synack_time = None
-
-        for line in lines:
-            parts = line.split('\t')
-            if len(parts) == 3:
-                time_rel, syn_flag, ack_flag = parts
-                if syn_flag == '1' and ack_flag == '0' and syn_time is None:
-                    syn_time = float(time_rel)
-                elif syn_flag == '1' and ack_flag == '1' and synack_time is None:
-                    synack_time = float(time_rel)
-
-                if syn_time is not None and synack_time is not None:
-                    break
-
-        if syn_time is not None and synack_time is not None:
-            latency_ms = (synack_time - syn_time) * 1000
-            return round(latency_ms, 2)
-
-    except Exception as e:
-        print(f"[!] Error estimating network latency: {e}")
-
-    return "N/A"
-
-
-def extract_flow_features_with_directions(pcap_file):
-    """Extract detailed flow features with accurate packet direction and protocol detection."""
-    try:
-        result = subprocess.run([
-            r"C:\Program Files\Wireshark\tshark.exe",
-            "-r", pcap_file,
-            "-T", "fields",
-            "-e", "ip.src",
-            "-e", "ip.dst",
-            "-e", "tcp.srcport",
-            "-e", "udp.srcport",
-            "-e", "tcp.dstport",
-            "-e", "udp.dstport",
-            "-e", "_ws.col.Protocol",
-            "-e", "frame.len",
-            "-e", "frame.time_relative"
-        ], capture_output=True, text=True, check=True)
-
-        lines = result.stdout.strip().split('\n')
-        if not lines:
-            return {}
-
-        total_packets = 0
-        total_bytes = 0
-        timestamps = []
-        forward_timestamps = []
-        backward_timestamps = []
-        src_ports = []
-        dst_ports = []
-        protocols = []
-
-        src_ips = []
-        dst_ips = []
-
-        for line in lines:
-            fields = line.split('\t')
-            if len(fields) >= 9:
-                src_ip, dst_ip, tcp_src, udp_src, tcp_dst, udp_dst, proto, pkt_len, time_rel = fields
-                src_ports.append(tcp_src or udp_src)
-                dst_ports.append(tcp_dst or udp_dst)
-                protocols.append(proto)
-
-                pkt_size = int(pkt_len) if pkt_len else 0
-                timestamp = float(time_rel) if time_rel else 0
-
-                total_bytes += pkt_size
-                timestamps.append(timestamp)
-                src_ips.append(src_ip)
-                dst_ips.append(dst_ip)
-
-                total_packets += 1
-
-        if not src_ips:
-            return {}
-
-        initiator_ip = src_ips[0]
-
-        for i, src_ip in enumerate(src_ips):
-            if src_ip == initiator_ip:
-                forward_timestamps.append(timestamps[i])
-            else:
-                backward_timestamps.append(timestamps[i])
-
-        flow_duration = max(timestamps) - min(timestamps) if timestamps else 0
-        flow_bytes_per_s = total_bytes / flow_duration if flow_duration else 0
-        flow_packets_per_s = total_packets / flow_duration if flow_duration else 0
-
-        avg_iat_forward = 0
-        if len(forward_timestamps) >= 2:
-            forward_timestamps.sort()
-            iat_fwd = [forward_timestamps[i+1] - forward_timestamps[i] for i in range(len(forward_timestamps)-1)]
-            avg_iat_forward = sum(iat_fwd)/len(iat_fwd)
-
-        avg_iat_backward = 0
-        if len(backward_timestamps) >= 2:
-            backward_timestamps.sort()
-            iat_bwd = [backward_timestamps[i+1] - backward_timestamps[i] for i in range(len(backward_timestamps)-1)]
-            avg_iat_backward = sum(iat_bwd)/len(iat_bwd)
-
-        idle_duration = 0
-        if len(timestamps) >= 2:
-            timestamps.sort()
-            idle_gaps = [timestamps[i+1] - timestamps[i] for i in range(len(timestamps)-1)]
-            idle_duration = max(idle_gaps)
-
-        # DETECT PROTOCOL
-        proto_set = set([p.lower() for p in protocols if p])
-        protocol_type = "TLSv1.2" if any("tls" in p for p in proto_set) else ("TCP" if "tcp" in proto_set else "UDP" if "udp" in proto_set else "N/A")
-
-        return {
-            "Source Port": Counter(src_ports).most_common(1)[0][0] if src_ports else "N/A",
-            "Destination Port": Counter(dst_ports).most_common(1)[0][0] if dst_ports else "N/A",
-            "Protocol Type": protocol_type,
-            "Flow Duration": round(flow_duration, 3),
-            "Packet Size": round(total_bytes/total_packets, 2) if total_packets else 0,
-            "Flow Bytes per Second": round(flow_bytes_per_s, 2),
-            "Flow Packets per Second": round(flow_packets_per_s, 2),
-            "Total Forward Packets": len(forward_timestamps),
-            "Total Backward Packets": len(backward_timestamps),
-            "IAT Forward": round(avg_iat_forward, 6),
-            "IAT Backward": round(avg_iat_backward, 6),
-            "Idle Duration": round(idle_duration, 6),
-            "Total Packets": total_packets,
-            "Total Bytes": total_bytes
-        }
-
-    except Exception as e:
-        print(f"[!] Error extracting flow features: {e}")
-        return {}
-
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -439,8 +284,6 @@ def login():
 
         capture_file = capture_network_traffic(username)
         source_ip, dest_ip = extract_ips_from_pcap(capture_file)
-        
-        flow_features = extract_flow_features_with_directions(capture_file)
 
         user_agent = request.headers.get('User-Agent', '')
         os_name, browser_info = get_device_info(user_agent)
@@ -460,21 +303,7 @@ def login():
                 username, source_ip, dest_ip, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 os_name, browser_info, login_status,
                 city, state, country, latitude, longitude,
-                current_failed_attempts, previous_successful_login, network_latency_ms, capture_file,
-                flow_features.get("Source Port", "N/A"),
-                flow_features.get("Destination Port", "N/A"),
-                flow_features.get("Protocol Type", "N/A"),
-                flow_features.get("Flow Duration", "N/A"),
-                flow_features.get("Packet Size", "N/A"),
-                flow_features.get("Flow Bytes per Second", "N/A"),
-                flow_features.get("Flow Packets per Second", "N/A"),
-                flow_features.get("Total Forward Packets", "N/A"),
-                flow_features.get("Total Backward Packets", "N/A"),
-                flow_features.get("IAT Forward", "N/A"),
-                flow_features.get("IAT Backward", "N/A"),
-                flow_features.get("Idle Duration", "N/A"),
-                flow_features.get("Total Packets", "N/A"),
-                flow_features.get("Total Bytes", "N/A")
+                current_failed_attempts, previous_successful_login, network_latency_ms, capture_file
             ])
 
         return "Login Successful" if login_status == 'Success' else "Login Failed. Please try again."
