@@ -58,7 +58,7 @@ if not os.path.exists(LOG_FILE):
     with open(LOG_FILE, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
-            "User Name", "Source IP", "Destination IP", "Timestamp",
+            "Username", "Source IP", "Destination IP", "Timestamp",
             "OS Name", "Browser Info", "Login Status",
             "City", "State", "Country", "Latitude", "Longitude",
             "Failed Login Count", "Previous Successful Login", "Network Latency (ms)", "Capture File",
@@ -417,18 +417,18 @@ def login():
             login_status = 'Success'
             current_failed_attempts = 0
             failed_login_tracker.pop(f"session_{username}", None)
-            send_email(
-                user['email'],
-                'ZTNA Login Notification',
-                f"Hello {username},\n\nYou have successfully logged in at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.",
-                html_body=f"""
-                <html><body>
-                <h2>Hello {username},</h2>
-                <p>You have successfully <b>logged in</b> at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.</p>
-                <p>Thank you!</p>
-                </body></html>
-                """
-            )
+            # send_email(
+            #     user['email'],
+            #     'ZTNA Login Notification',
+            #     f"Hello {username},\n\nYou have successfully logged in at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.",
+            #     html_body=f"""
+            #     <html><body>
+            #     <h2>Hello {username},</h2>
+            #     <p>You have successfully <b>logged in</b> at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.</p>
+            #     <p>Thank you!</p>
+            #     </body></html>
+            #     """
+            # )
         else:
             login_status = 'Failure'
             current_failed_attempts += 1
@@ -500,18 +500,18 @@ def signup():
             writer = csv.writer(f)
             writer.writerow([username, email, phone, hashed_pw])
         
-        send_email(
-            email,
-            'Signup Confirmation',
-            f"Hello {username},\n\nYou have successfully signed up on our platform.",
-            html_body=f"""
-            <html><body>
-            <h2>Welcome {username}!</h2>
-            <p>You have successfully <b>signed up</b> on our ZTNA platform.</p>
-            <p>Thank you for joining us!</p>
-            </body></html>
-            """
-        )
+        # send_email(
+        #     email,
+        #     'Signup Confirmation',
+        #     f"Hello {username},\n\nYou have successfully signed up on our platform.",
+        #     html_body=f"""
+        #     <html><body>
+        #     <h2>Welcome {username}!</h2>
+        #     <p>You have successfully <b>signed up</b> on our ZTNA platform.</p>
+        #     <p>Thank you for joining us!</p>
+        #     </body></html>
+        #     """
+        # )
 
         return redirect(url_for('login'))
     
