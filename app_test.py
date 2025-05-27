@@ -21,6 +21,7 @@ import pyotp, qrcode, io, base64
 import random
 from email.mime.multipart import MIMEMultipart
 from pybloom_live import BloomFilter
+import pickle 
 
 load_dotenv()
 app = Flask(__name__)
@@ -28,12 +29,23 @@ app.secret_key = 'your-very-secret-key'
 # iso_forest_model = joblib.load('iso_forest.joblib')
 #xgb_model = joblib.load("xgboost_classifier.pkl")
 # ——— Initialize Bloom filter ———
-my_bloom_filter = BloomFilter(capacity=100_000, error_rate=0.001)
+def save_bloom_filter(bloom, filename='bloom_filter.pkl'):
+    with open(filename, 'wb') as f:
+        pickle.dump(bloom, f)
+
+def load_bloom_filter(filename='bloom_filter.pkl'):
+    if os.path.exists(filename):
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+    return BloomFilter(capacity=100_000, error_rate=0.001)
+
 
 EMAIL_SENDER = os.getenv('EMAIL_SENDER')       #Your_gmail_address
 EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')   #App_password in gmail
 SMTP_SERVER = os.getenv('SMTP_SERVER')         # smtp.gmail.com
 SMTP_PORT = int(os.getenv('SMTP_PORT'))        # port 587
+
+my_bloom_filter = load_bloom_filter()
 
 @app.route('/dashboard')
 def dashboard():
@@ -650,6 +662,7 @@ def login():
 
             if f >= 6:
                 my_bloom_filter.add(username)
+                save_bloom_filter(my_bloom_filter)
                 return "Access Denied", 403
 
             # Fallback: allow login
