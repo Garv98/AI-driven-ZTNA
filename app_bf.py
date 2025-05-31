@@ -23,6 +23,8 @@ import random
 from email.mime.multipart import MIMEMultipart
 from pybloom_live import BloomFilter
 import pickle 
+from admin import admin_bp
+
 
 load_dotenv()
 app = Flask(__name__)
@@ -39,6 +41,36 @@ def load_bloom_filter(filename='bloom_filter.pkl'):
         with open(filename, 'rb') as f:
             return pickle.load(f)
     return BloomFilter(capacity=100_000, error_rate=0.001)
+
+# @app.route("/leaflet-test")
+# def leaflet_test():
+#     return """
+#     <!DOCTYPE html>
+#     <html>
+#     <head>
+#       <title>Leaflet Map Test</title>
+#       <meta charset="utf-8" />
+#       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+#       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+#       <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+#       <style>
+#         #map { height: 400px; width: 600px; }
+#       </style>
+#     </head>
+#     <body>
+#       <h1>Leaflet Map</h1>
+#       <div id="map"></div>
+#       <script>
+#         const map = L.map('map').setView([12.9716, 77.5946], 12);
+#         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+#           maxZoom: 19,
+#           attribution: '© OpenStreetMap contributors'
+#         }).addTo(map);
+#         L.marker([12.9716, 77.5946]).addTo(map);
+#       </script>
+#     </body>
+#     </html>
+#     """
 
 
 EMAIL_SENDER = os.getenv('EMAIL_SENDER')       #Your_gmail_address
@@ -146,6 +178,7 @@ FAILED_FILE = 'failed_logins.csv'
 USERS_FILE = 'users.json'
 SIGNUP_FILE = 'signup_data.csv'
 SUCCESSFUL_LOGINS_FILE = 'successful_logins.csv'
+app.register_blueprint(admin_bp)
 
 if not os.path.exists(SUCCESSFUL_LOGINS_FILE):
     with open(SUCCESSFUL_LOGINS_FILE, 'w', newline='') as f:
@@ -624,6 +657,9 @@ def login():
 
         # --- 8) Post-login logic ---
         if login_status == 'Success':
+            my_bloom_filter = load_bloom_filter()
+            if username in my_bloom_filter:
+                return "Access Denied. You have been blocked due to suspicious activity. Please contact the ZTNA administrator to regain access.", 403
             # Determine if this is the first successful login from this IP
             first_time = (username, source_ip) not in successful_login_tracker
             # Record successful login
@@ -657,15 +693,28 @@ def login():
                     return redirect(url_for('totp_setup'))
                 return redirect(url_for('mfa_totp'))
 
-            if 3 <= f < 6:
+            if 3 <= f < 5:
                 session['user'] = username
                 if not session.get('totp_secret'):
                     return redirect(url_for('totp_setup'))
                 return redirect(url_for('mfa_totp'))
 
-            if f >= 6:
+            if f >= 5:
                 my_bloom_filter.add(username)
                 save_bloom_filter(my_bloom_filter)
+                blocked_path = os.path.join(app.root_path, 'bloom_blocked.json')
+                # ensure file exists
+                if not os.path.exists(blocked_path):
+                    with open(blocked_path, 'w') as jb:
+                        json.dump([], jb)
+
+                with open(blocked_path, 'r+') as jb:
+                    data = json.load(jb)
+                    if username not in data:
+                        data.append(username)
+                        jb.seek(0)
+                        jb.truncate()
+                        json.dump(data, jb)
                 return "Access Denied", 403
 
             # Fallback: allow login
