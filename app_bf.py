@@ -42,37 +42,6 @@ def load_bloom_filter(filename='bloom_filter.pkl'):
             return pickle.load(f)
     return BloomFilter(capacity=100_000, error_rate=0.001)
 
-# @app.route("/leaflet-test")
-# def leaflet_test():
-#     return """
-#     <!DOCTYPE html>
-#     <html>
-#     <head>
-#       <title>Leaflet Map Test</title>
-#       <meta charset="utf-8" />
-#       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-#       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
-#       <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-#       <style>
-#         #map { height: 400px; width: 600px; }
-#       </style>
-#     </head>
-#     <body>
-#       <h1>Leaflet Map</h1>
-#       <div id="map"></div>
-#       <script>
-#         const map = L.map('map').setView([12.9716, 77.5946], 12);
-#         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-#           maxZoom: 19,
-#           attribution: '© OpenStreetMap contributors'
-#         }).addTo(map);
-#         L.marker([12.9716, 77.5946]).addTo(map);
-#       </script>
-#     </body>
-#     </html>
-#     """
-
-
 EMAIL_SENDER = os.getenv('EMAIL_SENDER')       #Your_gmail_address
 EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')   #App_password in gmail
 SMTP_SERVER = os.getenv('SMTP_SERVER')         # smtp.gmail.com
