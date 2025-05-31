@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    .bg-pattern {
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .input-glass {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .input-glass:focus {
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+    }
+    .btn-primary {
+      background: rgb(37, 99, 235);
+      transition: all 0.2s;
+    }
+    .btn-primary:hover {
+      background: rgb(29, 78, 216);
+      transform: scale(1.05);
+    }
+    .alert-success {
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: rgb(187, 247, 208);
+    }
+    .alert-danger {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: rgb(254, 202, 202);
+    }
+    .alert-info {
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: rgb(191, 219, 254);
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-pattern opacity-20"></div>
+  
+  <div class="w-full max-w-md glass-card shadow-2xl rounded-lg relative z-10">
+    <!-- Header -->
+    <div class="p-6 text-center space-y-1">
+      <div class="flex justify-center mb-4">
+        <div class="p-3 bg-blue-500/20 rounded-full">
+          <i data-lucide="shield" class="w-8 h-8 text-blue-400"></i>
+        </div>
+      </div>
+      <h1 class="text-2xl font-bold text-white">Admin Login</h1>
+      <p class="text-slate-300">Secure access to the admin dashboard</p>
+    </div>
+    
+    <!-- Content -->
+    <div class="p-6 pt-0 space-y-4">
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="alert-{{ category }} rounded-md p-3">
+              <span>{{ msg }}</span>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      
+      <form method="POST" class="space-y-4">
+        <!-- Username Field -->
+        <div class="space-y-2">
+          <label for="admin_username" class="text-slate-300 text-sm font-medium">Username</label>
+          <div class="relative">
+            <i data-lucide="user" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input
+              id="admin_username"
+              name="admin_username"
+              type="text"
+              class="w-full pl-10 pr-3 py-2 input-glass text-white placeholder-slate-400 rounded-md"
+              placeholder="Enter your username"
+              required
+            />
+          </div>
+        </div>
+        
+        <!-- Password Field -->
+        <div class="space-y-2">
+          <label for="admin_password" class="text-slate-300 text-sm font-medium">Password</label>
+          <div class="relative">
+            <i data-lucide="lock" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input
+              id="admin_password"
+              name="admin_password"
+              type="password"
+              class="w-full pl-10 pr-10 py-2 input-glass text-white placeholder-slate-400 rounded-md"
+              placeholder="Enter your password"
+              required
+            />
+            <button
+              type="button"
+              id="toggle-password"
+              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+            >
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Submit Button -->
+        <button
+          type="submit"
+          class="w-full btn-primary text-white font-semibold py-2 px-4 rounded-lg"
+        >
+          Login
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // Password toggle functionality
+    const togglePassword = document.getElementById('toggle-password');
+    const passwordInput = document.getElementById('admin_password');
+    const toggleIcon = togglePassword.querySelector('i');
+
+    togglePassword.addEventListener('click', function() {
+      const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      passwordInput.setAttribute('type', type);
+      
+      if (type === 'text') {
+        toggleIcon.setAttribute('data-lucide', 'eye-off');
+      } else {
+        toggleIcon.setAttribute('data-lucide', 'eye');
+      }
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
